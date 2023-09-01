@@ -1,115 +1,146 @@
 
 const util = require('util');
-const { S3Client, ListObjectsCommand } = require("@aws-sdk/client-s3");
+const { 
+  S3Client,
+  ListObjectsV2Command,
+  HeadObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand
+} = require("@aws-sdk/client-s3");
 
 // The following code uses the AWS SDK for JavaScript (v3).
 // For more information, see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/index.html.
-const s3Client = new S3Client({});
-
-/**
- * @param {string} bucketName
- */
-const listObjectNames = async (bucketName) => {
-  console.log(`Getting objects from bucket: ${bucketName}`);
-  const command = new ListObjectsCommand({ Bucket: bucketName });
-
-  try {
-    const data = await s3Client.send(command);
-  
-      // bucket is empty
-    if (!data.Contents || data.Contents.length === 0) {
-      return [];
-    }
-  
-  
-    // Map the response to a list of strings representing the keys of the Amazon Simple Storage Service (Amazon S3) objects.
-    // Filter out any objects that don't have keys.
-    return data.Contents.map(({ Key }) => Key).filter((k) => !!k);
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
-};
-
-/**
- * @typedef {{ httpMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string }} LambdaEvent
- */
-
-/**
- *
- * @param {LambdaEvent} lambdaEvent
- */
-const routeRequest = (lambdaEvent) => {
-  if (lambdaEvent.httpMethod === "GET" && lambdaEvent.path === "/") {
-    return handleGetRequest();
-  }
-
-  const error = new Error(
-    `Unimplemented HTTP method: ${lambdaEvent.httpMethod}`
-  );
-  error.name = "UnimplementedHTTPMethodError";
-  throw error;
-};
-
-const handleGetRequest = async () => {
-  if (process.env.BUCKET === "undefined") {
-    const err = new Error(`No bucket name provided.`);
-    err.name = "MissingBucketName";
-    throw err;
-  }
-
-  const objects = await listObjectNames(process.env.BUCKET);
-  console.log(`Found ${objects.length} objects in bucket`);
-  return buildResponseBody(200, objects);
-};
-
-/**
- * @typedef {{statusCode: number, body: string, headers: Record<string, string> }} LambdaResponse
- */
-
-/**
- *
- * @param {number} status
- * @param {Record<string, string>} headers
- * @param {Record<string, unknown>} body
- *
- * @returns {LambdaResponse}
- */
-const buildResponseBody = (status, body, headers = {
-    'Content-Type': 'application/json',
-  }) => {
-  return {
-    statusCode: status,
-    headers,
-    body: JSON.stringify(body),
-  };
-};
-
+const S3 = new S3Client({});
+const bucketName = process.env.BUCKET;
 /**
  *
  * @param {LambdaEvent} event
  */
 const handler = async (event) => {
   try {
-    const result = await routeRequest(event);
-    console.log(`Result: ${util.inspect(result)}`);
-    return result;
-  } catch (err) {
-    console.log(err);
+    const method = event.httpMethod;
+    // Get name, if present
+    const widgetName = event.path.startsWith('/') ? event.path.substring(1) : event.path;
 
-    if (err.name === "MissingBucketName") {
-      return buildResponseBody(400, err.message);
+    if (method === "GET") {
+      // GET / to get the names of all widgets
+      if (event.path === "/") {
+        const data = await S3.send(new ListObjectsV2Command({ Bucket: bucketName }));
+        const body = {
+          widgets: data.Contents.map(function(e) { return e.Key })
+        };
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body)
+        };
+      }
+
+      if (widgetName) {
+        // GET /name to get info on widget name
+        const headObjectResponse = await S3.send(new HeadObjectCommand({ Bucket: bucketName, Key: widgetName}));
+        const {
+          ContentLength,
+          ContentType,
+          ETag,
+          LastModified,
+          StorageClass,
+          ServerSideEncryption,
+          VersionId,
+          Metadata, // Custom metadata headers
+        } = headObjectResponse;
+
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ContentLength,
+            ContentType,
+            ETag,
+            LastModified,
+            StorageClass,
+            ServerSideEncryption,
+            VersionId,
+            Metadata,
+          }),
+        };
+      }
     }
 
-    if (err.name === "EmptyBucketError") {
-      return buildResponseBody(204, []);
+    if (method === "POST") {
+      // POST /name
+      // Return error if we do not have a name
+      if (!widgetName) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: "Widget name missing"
+        };
+      }
+
+      // Create some dummy data to populate object
+      const now = new Date();
+      const data = widgetName + " created: " + now;
+
+      const base64data = Buffer.from(data, 'binary');
+
+      await S3.send(new PutObjectCommand({
+        Bucket: bucketName,
+        Key: widgetName,
+        Body: base64data,
+        ContentType: 'application/json'
+      }));
+
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: data
+      };
     }
 
-    if (err.name === "UnimplementedHTTPMethodError") {
-      return buildResponseBody(400, err.message);
+    if (method === "DELETE") {
+      // DELETE /name
+      // Return an error if we do not have a name
+      if (!widgetName) {
+        return {
+          statusCode: 400,
+          headers: {},
+          body: "Widget name missing"
+        };
+      }
+
+      await S3.send(new DeleteObjectCommand({
+        Bucket: bucketName, Key: widgetName
+      }));
+
+      return {
+        statusCode: 200,
+        headers: {},
+        body: "Successfully deleted widget " + widgetName
+      };
     }
 
-    return buildResponseBody(500, err.message || "Unknown server error");
+    // We got something besides a GET, POST, or DELETE
+    return {
+      statusCode: 400,
+      headers: {},
+      body: "We only accept GET, POST, and DELETE, not " + method
+    };
+  } catch(error) {
+    var body = error.stack || JSON.stringify(error, null, 2);
+    return {
+      statusCode: 400,
+      headers: {},
+      body: body
+    }
   }
 };
 

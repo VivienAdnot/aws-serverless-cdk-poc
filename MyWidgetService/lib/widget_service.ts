@@ -26,10 +26,12 @@ export class WidgetService extends Construct {
       description: "This service serves widgets."
     });
 
-    const getWidgetsIntegration = new apigateway.LambdaIntegration(handler, {
-      requestTemplates: { "application/json": '{ "statusCode": "200" }' }
-    });
+    const widget = api.root.addResource("{id}");
 
-    api.root.addMethod("GET", getWidgetsIntegration); // GET /
+    const widgetIntegration = new apigateway.LambdaIntegration(handler);
+
+    widget.addMethod("POST", widgetIntegration);   // POST /{id}
+    widget.addMethod("GET", widgetIntegration);    // GET /{id}
+    widget.addMethod("DELETE", widgetIntegration); // DELETE /{id}
   }
 }
