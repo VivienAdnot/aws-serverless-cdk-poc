@@ -1,4 +1,3 @@
-import { expect, jest, test } from '@jest/globals';
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import * as MyWidgetService from '../lib/my_widget_service-stack';

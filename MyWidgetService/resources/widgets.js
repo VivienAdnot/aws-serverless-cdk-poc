@@ -1,5 +1,3 @@
-
-const util = require('util');
 const { 
   S3Client,
   ListObjectsV2Command,
