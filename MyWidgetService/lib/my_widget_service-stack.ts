@@ -10,10 +10,5 @@ export class MyWidgetServiceStack extends cdk.Stack {
 
     // The code that defines your stack goes here
     new widget_service.WidgetService(this, 'Widgets');
-
-    // example resource
-    // const queue = new sqs.Queue(this, 'MyWidgetServiceQueue', {
-    //   visibilityTimeout: cdk.Duration.seconds(300)
-    // });
   }
 }

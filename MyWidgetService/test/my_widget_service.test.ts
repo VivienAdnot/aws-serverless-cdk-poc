@@ -1,17 +1,30 @@
-// import * as cdk from 'aws-cdk-lib';
-// import { Template } from 'aws-cdk-lib/assertions';
-// import * as MyWidgetService from '../lib/my_widget_service-stack';
+import { expect, jest, test } from '@jest/globals';
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import * as MyWidgetService from '../lib/my_widget_service-stack';
 
-// example test. To run these tests, uncomment this file along with the
-// example resource in lib/my_widget_service-stack.ts
-test('SQS Queue Created', () => {
-//   const app = new cdk.App();
-//     // WHEN
-//   const stack = new MyWidgetService.MyWidgetServiceStack(app, 'MyTestStack');
-//     // THEN
-//   const template = Template.fromStack(stack);
+test('Lambda Created', () => {
+  const app = new cdk.App();
+    // WHEN
+  const stack = new MyWidgetService.MyWidgetServiceStack(app, 'MyTestStack');
+    // THEN
+  const template = Template.fromStack(stack);
 
-//   template.hasResourceProperties('AWS::SQS::Queue', {
-//     VisibilityTimeout: 300
-//   });
+  console.log(JSON.stringify(template.toJSON(), null, 2));
+
+  // lambda function
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    Runtime: 'nodejs18.x',
+  });
+
+  // bucket
+  template.hasResource('AWS::S3::Bucket', {
+    UpdateReplacePolicy: "Retain",
+    DeletionPolicy: "Retain"
+  });
+
+  // api gateway
+  template.hasResourceProperties('AWS::ApiGateway::RestApi', {
+    Name: "Widget Service"
+  });
 });
